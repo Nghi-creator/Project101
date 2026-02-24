@@ -25,7 +25,12 @@ function startGameEngine() {
 
     const retroarch = spawn(
       "retroarch",
-      ["-f", "-L", "/cores/nestopia_libretro.so", "/roms/owlia.nes"],
+      [
+        "-f",
+        "-L",
+        "/cores/nestopia_libretro.so",
+        "/roms/little_sisyphus_v1.nes",
+      ],
       { env: { ...process.env, DISPLAY: ":99" } },
     );
     retroarch.stderr.on("data", (data) => console.log(`[RetroArch] ${data}`));
