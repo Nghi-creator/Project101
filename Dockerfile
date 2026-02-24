@@ -15,11 +15,11 @@ RUN apt-get update && apt-get install -y \
     gstreamer1.0-plugins-ugly \
     gstreamer1.0-plugins-good
 
-# 2. Download RetroArch
+# 2. Download RetroArch (launchpad PPA)
 RUN add-apt-repository -y ppa:libretro/stable && \
     apt-get update && apt-get install -y --no-install-recommends retroarch
 
-# 3. Fetch the bulletproof standard PC NES Core
+# 3. Fetch PC NES Core
 RUN mkdir -p /cores && \
     wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/nestopia_libretro.so.zip -O /cores/nestopia.zip && \
     cd /cores && unzip nestopia.zip && rm nestopia.zip
