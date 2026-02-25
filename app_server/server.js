@@ -47,6 +47,7 @@ function startGameEngine() {
     const gstArgs = [
       "ximagesrc",
       "display-name=:99",
+      "use-damage=false",
       "!",
       "video/x-raw,framerate=30/1",
       "!",
@@ -79,22 +80,34 @@ const tcpServer = net.createServer((socket) => {
   const JPEG_END = Buffer.from([0xff, 0xd9]);
 
   socket.on("data", (chunk) => {
-    // 1. Add new data to buffer
     imageBuffer = Buffer.concat([imageBuffer, chunk]);
 
-    // 2. Look for the start and end of a JPEG
     let startIdx = imageBuffer.indexOf(JPEG_START);
-    let endIdx = imageBuffer.indexOf(JPEG_END);
 
-    // 3. Send full image to React
-    while (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-      const frame = imageBuffer.subarray(startIdx, endIdx + 2);
-      io.emit("video-frame", frame.toString("base64"));
+    // 1. Loop as long as we find a Start byte
+    while (startIdx !== -1) {
+      // 2. Throw away any garbage BEFORE the start byte
+      if (startIdx > 0) {
+        imageBuffer = imageBuffer.subarray(startIdx);
+        startIdx = 0;
+      }
 
-      imageBuffer = imageBuffer.subarray(endIdx + 2);
+      // 3. Look for the End byte
+      let endIdx = imageBuffer.indexOf(JPEG_END, 1000);
 
-      startIdx = imageBuffer.indexOf(JPEG_START);
-      endIdx = imageBuffer.indexOf(JPEG_END);
+      if (endIdx !== -1) {
+        // 4. Slice the perfect frame and send it
+        const frame = imageBuffer.subarray(0, endIdx + 2);
+        io.emit("video-frame", frame.toString("base64"));
+
+        // 5. Trim the sent frame out of the buffer
+        imageBuffer = imageBuffer.subarray(endIdx + 2);
+
+        // 6. Look for the next Start byte in the remaining data
+        startIdx = imageBuffer.indexOf(JPEG_START);
+      } else {
+        break;
+      }
     }
   });
 });
@@ -103,14 +116,26 @@ tcpServer.listen(5000, "127.0.0.1", () =>
   console.log("TCP Video Server listening on port 5000"),
 );
 
+// --- UPGRADED CONTROLLER LOGIC ---
 io.on("connection", (socket) => {
   console.log("A player connected to the console!");
 
-  socket.on("key-press", (data) => {
+  // Listen for the physical PRESS
+  socket.on("keydown", (data) => {
     let linuxKey = translateKey(data.key);
     if (linuxKey) {
-      exec(`DISPLAY=:99 xdotool key ${linuxKey}`, (err) => {
-        if (err) console.error("[xdotool Error]:", err);
+      exec(`DISPLAY=:99 xdotool keydown ${linuxKey}`, (err) => {
+        if (err) console.error("[xdotool keydown Error]:", err);
+      });
+    }
+  });
+
+  // Listen for the physical RELEASE
+  socket.on("keyup", (data) => {
+    let linuxKey = translateKey(data.key);
+    if (linuxKey) {
+      exec(`DISPLAY=:99 xdotool keyup ${linuxKey}`, (err) => {
+        if (err) console.error("[xdotool keyup Error]:", err);
       });
     }
   });

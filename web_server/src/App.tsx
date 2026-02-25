@@ -7,24 +7,26 @@ function App() {
   const [frame, setFrame] = useState<string>("");
 
   useEffect(() => {
-    // Listen for incoming video frames and update the image source
-    socket.on("video-frame", (data: string) => {
-      setFrame(`data:image/jpeg;base64,${data}`);
+    socket.on("video-frame", (base64Data: string) => {
+      setFrame(`data:image/jpeg;base64,${base64Data}`);
     });
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)
-      ) {
-        event.preventDefault();
-      }
-      socket.emit("key-press", { key: event.key });
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      socket.emit("keydown", { key: e.key });
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      socket.emit("keyup", { key: e.key });
     };
 
     window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
       socket.off("video-frame");
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
     };
   }, []);
 
@@ -39,7 +41,6 @@ function App() {
     >
       <h1>🎮 React Cloud Console</h1>
 
-      {/* Render the game stream or a loading box */}
       {frame ? (
         <img
           src={frame}
