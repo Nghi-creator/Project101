@@ -1,16 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 
 const socket = io("http://localhost:8080");
 
 function App() {
-  const [frame, setFrame] = useState<string>("");
+  // Create a direct reference to the HTML5 Canvas
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    // --- THE ANTI-FLICKER CANVAS RENDERER ---
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+
+    // We create a background image object to decode the Base64 invisibly
+    const img = new Image();
+    img.onload = () => {
+      // ONLY draw to the screen when the image is 100% successfully decoded
+      if (ctx && canvas) {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      }
+    };
+
     socket.on("video-frame", (base64Data: string) => {
-      setFrame(`data:image/jpeg;base64,${base64Data}`);
+      // Giving the img a new src triggers the onload function above
+      img.src = `data:image/jpeg;base64,${base64Data}`;
     });
 
+    // --- KEYBOARD CONTROLS ---
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
       socket.emit("keydown", { key: e.key });
@@ -37,39 +53,29 @@ function App() {
         color: "white",
         height: "100vh",
         textAlign: "center",
+        paddingTop: "20px",
       }}
     >
       <h1>🎮 React Cloud Console</h1>
 
-      {frame ? (
-        <img
-          src={frame}
-          alt="Game Stream"
-          style={{
-            width: 800,
-            height: 600,
-            background: "black",
-            border: "2px solid #444",
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            width: 800,
-            height: 600,
-            background: "black",
-            border: "2px solid #444",
-            margin: "0 auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <p>Waiting for video stream...</p>
-        </div>
-      )}
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={600}
+        style={{
+          background: "black",
+          border: "4px solid #444",
+          borderRadius: "8px",
+          margin: "0 auto",
+          display: "block",
+          boxShadow: "0px 0px 20px rgba(0,0,0,0.8)",
+        }}
+      />
 
-      <p>Click the page to focus, and use your Arrow Keys + Z/X to play!</p>
+      <p style={{ marginTop: "20px", fontSize: "1.2rem" }}>
+        Click the game screen to focus, and use your <b>Arrow Keys + Z/X</b> to
+        play!
+      </p>
     </div>
   );
 }

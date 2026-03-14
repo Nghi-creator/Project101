@@ -19,7 +19,17 @@ process.on("unhandledRejection", (reason) =>
 
 function startGameEngine() {
   console.log("Starting Virtual Screen...");
+
+  // Clean up any stale X11 lock file (Docker restart issue)
+  if (fs.existsSync("/tmp/.X99-lock")) {
+    fs.rmSync("/tmp/.X99-lock", { force: true });
+  }
+  if (fs.existsSync("/tmp/.X11-unix/X99")) {
+    fs.rmSync("/tmp/.X11-unix/X99", { force: true, recursive: true });
+  }
+
   const xvfb = spawn("Xvfb", [":99", "-screen", "0", "640x480x24"]);
+  xvfb.stderr.on("data", (data) => console.error(`[Xvfb Error]: ${data}`));
 
   const config = `
   vrr_runloop_enable = "true"
@@ -44,10 +54,10 @@ function startGameEngine() {
     );
     retroarch.stderr.on("data", (data) => console.log(`[RetroArch] ${data}`));
 
+    // Removed the failed 'use-damage=false' flag
     const gstArgs = [
       "ximagesrc",
       "display-name=:99",
-      "use-damage=false",
       "!",
       "video/x-raw,framerate=30/1",
       "!",
@@ -71,7 +81,7 @@ function startGameEngine() {
   }, 1000);
 }
 
-// --- TCP CAPTURE CARD ---
+// --- THE BULLETPROOF TCP CAPTURE CARD ---
 const tcpServer = net.createServer((socket) => {
   console.log("Camera connected to TCP Capture Card!");
 
@@ -82,30 +92,45 @@ const tcpServer = net.createServer((socket) => {
   socket.on("data", (chunk) => {
     imageBuffer = Buffer.concat([imageBuffer, chunk]);
 
-    let startIdx = imageBuffer.indexOf(JPEG_START);
+    while (true) {
+      let start = imageBuffer.indexOf(JPEG_START);
+      let end = imageBuffer.indexOf(JPEG_END);
 
-    // 1. Loop as long as we find a Start byte
-    while (startIdx !== -1) {
-      // 2. Throw away any garbage BEFORE the start byte
-      if (startIdx > 0) {
-        imageBuffer = imageBuffer.subarray(startIdx);
-        startIdx = 0;
+      // If we don't have a Start marker yet, wait for more data.
+      if (start === -1) break;
+
+      // 1. THE ORPHAN CLEANUP: If an End marker appears BEFORE a Start marker,
+      // it is leftover garbage from a broken chunk. Trim it away and restart the loop.
+      if (end !== -1 && end < start) {
+        imageBuffer = imageBuffer.subarray(start);
+        continue;
       }
 
-      // 3. Look for the End byte
-      let endIdx = imageBuffer.indexOf(JPEG_END, 1000);
+      // 1.5 THE LEFTOVER FRAME CLEANUP: If there are MULTIPLE Start markers before the End marker,
+      // the earlier Start markers belong to broken/dropped frames! Trim them away to prevent glitches.
+      if (end !== -1) {
+        let lastStart = imageBuffer.lastIndexOf(JPEG_START, end);
+        if (lastStart > start) {
+          imageBuffer = imageBuffer.subarray(lastStart);
+          continue;
+        }
+      }
 
-      if (endIdx !== -1) {
-        // 4. Slice the perfect frame and send it
-        const frame = imageBuffer.subarray(0, endIdx + 2);
+      // 2. THE PADDING CLEANUP: Trim any random network garbage before the Start marker
+      if (start > 0) {
+        imageBuffer = imageBuffer.subarray(start);
+        start = 0;
+        end = imageBuffer.indexOf(JPEG_END); // Recalculate End position!
+      }
+
+      // 3. THE EXTRACTION: If we have a perfect pair, slice it and send it!
+      if (start !== -1 && end !== -1) {
+        const frame = imageBuffer.subarray(start, end + 2);
         io.emit("video-frame", frame.toString("base64"));
 
-        // 5. Trim the sent frame out of the buffer
-        imageBuffer = imageBuffer.subarray(endIdx + 2);
-
-        // 6. Look for the next Start byte in the remaining data
-        startIdx = imageBuffer.indexOf(JPEG_START);
+        imageBuffer = imageBuffer.subarray(end + 2);
       } else {
+        // We have a Start, but no End yet. Wait for the next TCP chunk.
         break;
       }
     }
@@ -120,7 +145,6 @@ tcpServer.listen(5000, "127.0.0.1", () =>
 io.on("connection", (socket) => {
   console.log("A player connected to the console!");
 
-  // Listen for the physical PRESS
   socket.on("keydown", (data) => {
     let linuxKey = translateKey(data.key);
     if (linuxKey) {
@@ -130,7 +154,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Listen for the physical RELEASE
   socket.on("keyup", (data) => {
     let linuxKey = translateKey(data.key);
     if (linuxKey) {
