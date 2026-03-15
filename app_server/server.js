@@ -12,7 +12,7 @@ const io = new Server(server, {
 });
 
 function startGameEngine() {
-  console.log("Starting Virtual Screen...");
+  console.log("Starting Virtual Screen and Audio Engine...");
   if (fs.existsSync("/tmp/.X99-lock"))
     fs.rmSync("/tmp/.X99-lock", { force: true });
   if (fs.existsSync("/tmp/.X11-unix/X99"))
@@ -20,17 +20,19 @@ function startGameEngine() {
 
   spawn("Xvfb", [":99", "-screen", "0", "640x480x24"]);
 
-  // THE FIX: Perfectly formatted config string forcing SDL2 Audio Sync
+  exec(
+    "pulseaudio -D --system --disallow-exit --disable-shm=yes --load='module-native-protocol-tcp auth-anonymous=1'",
+  );
+
   fs.writeFileSync(
     "/app/retroarch.cfg",
-    'audio_driver = "sdl2"\n' +
+    'audio_driver = "pulse"\n' +
       'audio_sync = "true"\n' +
       'video_vsync = "false"\n',
   );
 
   setTimeout(() => {
     console.log("Starting Emulator...");
-    // THE FIX: We inject SDL_AUDIODRIVER="dummy" so SDL paces the 60fps clock natively!
     spawn(
       "retroarch",
       [
@@ -41,13 +43,13 @@ function startGameEngine() {
         "/app/retroarch.cfg",
         "/roms/little_sisyphus_v1.nes",
       ],
-      {
-        env: { ...process.env, DISPLAY: ":99", SDL_AUDIODRIVER: "dummy" },
-      },
+      { env: { ...process.env, DISPLAY: ":99", PULSE_SERVER: "127.0.0.1" } },
     );
 
     console.log("Starting Python Camera Bridge...");
-    const camera = spawn("python3", ["-u", __dirname + "/camera.py"]);
+    const camera = spawn("python3", ["-u", __dirname + "/camera.py"], {
+      env: { ...process.env, PULSE_SERVER: "127.0.0.1" },
+    });
     camera.stdout.on("data", (data) => console.log(`${data}`));
     camera.stderr.on("data", (data) => console.error(`[Camera Error] ${data}`));
   }, 1000);

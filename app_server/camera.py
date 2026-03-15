@@ -15,21 +15,25 @@ pipeline = None
 def handle_offer(offer):
     global webrtcbin, pipeline
     print("[Python] Received React Offer! Building WebRTC Pipeline...")
-    
-    # Added config-interval=-1 so Chrome/Safari actually decode the video!
+
     pipeline_str = """
+        webrtcbin name=sendrecv
+        
         ximagesrc display-name=:99 use-damage=true ! 
         video/x-raw,framerate=60/1 ! 
         videoconvert ! video/x-raw,format=I420 ! queue ! 
         vp8enc deadline=1 cpu-used=8 threads=4 end-usage=cbr target-bitrate=1000000 keyframe-max-dist=30 ! 
-        rtpvp8pay ! queue ! 
-        application/x-rtp,media=video,encoding-name=VP8,payload=96 ! 
-        webrtcbin name=sendrecv
+        rtpvp8pay pt=96 ! queue ! 
+        application/x-rtp,media=video,encoding-name=VP8,payload=96 ! sendrecv.
+        
+        pulsesrc device=auto_null.monitor ! 
+        audioconvert ! audioresample ! queue ! 
+        opusenc ! rtpopuspay pt=111 ! queue ! 
+        application/x-rtp,media=audio,encoding-name=OPUS,payload=111 ! sendrecv.
     """
     pipeline = Gst.parse_launch(pipeline_str)
     webrtcbin = pipeline.get_by_name('sendrecv')
 
-    # 1. THE FIX: Turn the pipeline ON *before* we negotiate the handshake!
     pipeline.set_state(Gst.State.PLAYING)
 
     def on_ice_candidate(webrtc, mlineindex, candidate):
@@ -46,7 +50,6 @@ def handle_offer(offer):
         promise = Gst.Promise.new_with_change_func(on_answer_created, None, None)
         webrtcbin.emit('create-answer', None, promise)
 
-    # 2. Now that video is flowing, apply the React Offer
     res, sdp_msg = GstSdp.SDPMessage.new_from_text(offer['sdp'])
     offer_sdp = GstWebRTC.WebRTCSessionDescription.new(GstWebRTC.WebRTCSDPType.OFFER, sdp_msg)
     promise = Gst.Promise.new_with_change_func(on_offer_set, None, None)
@@ -59,7 +62,6 @@ def connect():
 
 @sio.on('webrtc-offer')
 def on_offer(offer):
-    # We use idle_add to safely run GStreamer math on the main thread
     GLib.idle_add(handle_offer, offer)
 
 @sio.on('webrtc-ice-candidate')
@@ -69,7 +71,6 @@ def on_ice(candidate):
             webrtcbin.emit('add-ice-candidate', candidate['sdpMLineIndex'], candidate['candidate'])
     GLib.idle_add(handle_ice)
 
-# Connect to Node.js and keep the script alive!
 sio.connect('http://localhost:8080')
 loop = GLib.MainLoop()
 loop.run()

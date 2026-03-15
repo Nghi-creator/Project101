@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
 const socket = io("http://localhost:8080");
@@ -6,45 +6,33 @@ const socket = io("http://localhost:8080");
 function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
-    console.log("[React] 1. Initializing WebRTC...");
+    if (!isPlaying) return;
+
+    console.log("[React] 1. Initializing WebRTC with Audio + Video...");
 
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
     peerConnection.current = pc;
 
-    pc.onconnectionstatechange = () =>
-      console.log("🫀 [WebRTC] Connection State:", pc.connectionState);
-    pc.oniceconnectionstatechange = () =>
-      console.log("🧊 [WebRTC] ICE (Network) State:", pc.iceConnectionState);
-    pc.onsignalingstatechange = () =>
-      console.log("🚦 [WebRTC] Signaling State:", pc.signalingState);
-
-    // --- THE STREAM FIX ---
     pc.ontrack = (event) => {
-      console.log(
-        "[React] 5. VIDEO TRACK RECEIVED! Plugging into <video> tag...",
-      );
+      console.log(`[React] TRACK RECEIVED! Kind: ${event.track.kind}`);
       if (videoRef.current) {
-        // If event.streams[0] is missing, we manually wrap the raw track in a MediaStream!
-        videoRef.current.srcObject =
-          event.streams[0] || new MediaStream([event.track]);
+        const stream =
+          (videoRef.current.srcObject as MediaStream) || new MediaStream();
+        stream.addTrack(event.track);
+        videoRef.current.srcObject = stream;
       }
     };
 
     pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit("webrtc-ice-candidate", event.candidate);
-      }
+      if (event.candidate) socket.emit("webrtc-ice-candidate", event.candidate);
     };
 
     socket.on("webrtc-answer", (answer) => {
-      console.log(
-        "[React] Answer received from Python! Finalizing connection...",
-      );
-      console.log("✉️ OPENING THE ENVELOPE (SDP):", answer.sdp);
       pc.setRemoteDescription(new RTCSessionDescription(answer));
     });
 
@@ -52,23 +40,15 @@ function App() {
       pc.addIceCandidate(new RTCIceCandidate(candidate));
     });
 
-    // --- THE RACE CONDITION FIX ---
-    // We only ask for video AFTER Socket.io confirms the connection is live
     socket.on("connect", () => {
-      console.log("[React] 2. Socket.io Successfully Connected to Node.js!");
-
+      console.log("[React] 2. Connected! Asking for Video AND Audio...");
       pc.addTransceiver("video", { direction: "recvonly" });
+      pc.addTransceiver("audio", { direction: "recvonly" });
 
-      console.log("[React] 3. Generating WebRTC Offer...");
-      pc.createOffer()
-        .then((offer) => {
-          console.log("[React] 4. Offer generated! Firing at Node.js...");
-          pc.setLocalDescription(offer);
-          socket.emit("webrtc-offer", offer);
-        })
-        .catch((err) => {
-          console.error("[React] FATAL ERROR: Could not generate offer!", err);
-        });
+      pc.createOffer().then((offer) => {
+        pc.setLocalDescription(offer);
+        socket.emit("webrtc-offer", offer);
+      });
     });
 
     // --- CONTROLS ---
@@ -84,15 +64,25 @@ function App() {
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
 
+    // If socket is already connected when we click Play, manually trigger the handshake
+    if (socket.connected) {
+      socket.emit("python-ready"); // Ping server to trigger pipeline
+      pc.addTransceiver("video", { direction: "recvonly" });
+      pc.addTransceiver("audio", { direction: "recvonly" });
+      pc.createOffer().then((offer) => {
+        pc.setLocalDescription(offer);
+        socket.emit("webrtc-offer", offer);
+      });
+    }
+
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       pc.close();
-      socket.off("connect");
       socket.off("webrtc-answer");
       socket.off("webrtc-ice-candidate-backend");
     };
-  }, []);
+  }, [isPlaying]);
 
   return (
     <div
@@ -106,23 +96,40 @@ function App() {
     >
       <h1>🎮 WebRTC Cloud Console</h1>
 
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        style={{
-          width: 800,
-          height: 600,
-          background: "black",
-          border: "4px solid #444",
-          borderRadius: "8px",
-          margin: "0 auto",
-          display: "block",
-          boxShadow: "0px 0px 20px rgba(0,0,0,0.8)",
-        }}
-      />
-
+      {!isPlaying ? (
+        <div style={{ padding: "100px" }}>
+          <button
+            onClick={() => setIsPlaying(true)}
+            style={{
+              fontSize: "2rem",
+              padding: "20px 40px",
+              cursor: "pointer",
+              background: "green",
+              color: "white",
+              borderRadius: "8px",
+              border: "none",
+            }}
+          >
+            Power On Console
+          </button>
+        </div>
+      ) : (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          style={{
+            width: 800,
+            height: 600,
+            background: "black",
+            border: "4px solid #444",
+            borderRadius: "8px",
+            margin: "0 auto",
+            display: "block",
+            boxShadow: "0px 0px 20px rgba(0,0,0,0.8)",
+          }}
+        />
+      )}
       <p style={{ marginTop: "20px", fontSize: "1.2rem" }}>
         Click the game screen to focus, and use your <b>Arrow Keys + Z/X</b> to
         play!
