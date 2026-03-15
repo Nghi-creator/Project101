@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 ubuntu:22.04
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -13,16 +13,33 @@ RUN apt-get update && apt-get install -y \
     gstreamer1.0-tools \
     gstreamer1.0-plugins-bad \
     gstreamer1.0-plugins-ugly \
-    gstreamer1.0-plugins-good
+    gstreamer1.0-plugins-good \
+    python3 \
+    python3-pip \
+    python3-gi \
+    python3-gst-1.0 \
+    gir1.2-gst-plugins-bad-1.0 \
+    gir1.2-gst-plugins-base-1.0 \
+    gstreamer1.0-nice \
+    && pip3 install "python-socketio[client]" \
+    && rm -rf /var/lib/apt/lists/*
 
-# 2. Download RetroArch (launchpad PPA)
-RUN add-apt-repository -y ppa:libretro/stable && \
-    apt-get update && apt-get install -y --no-install-recommends retroarch
+# 2. Install RetroArch and C++ Build Tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    retroarch \
+    build-essential \
+    git \
+    g++ \
+    make \
+    ca-certificates
 
-# 3. Fetch PC NES Core
-RUN mkdir -p /cores && \
-    wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/nestopia_libretro.so.zip -O /cores/nestopia.zip && \
-    cd /cores && unzip nestopia.zip && rm nestopia.zip
+# 3. Forge the Native ARM64 NES Core from Source Code
+RUN git clone --depth 1 https://github.com/libretro/nestopia.git /tmp/nestopia && \
+    cd /tmp/nestopia/libretro && \
+    make -j4 && \
+    mkdir -p /cores && \
+    cp nestopia_libretro.so /cores/ && \
+    rm -rf /tmp/nestopia
 
 # 4. Install Node.js 
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
@@ -33,6 +50,9 @@ WORKDIR /app
 
 RUN npm install express socket.io cors
 RUN mkdir -p /roms
-COPY app_server/server.js /app/server.js
+
+COPY app_server/package*.json ./
+RUN npm install
+COPY app_server/ .
 
 CMD ["node", "server.js"]

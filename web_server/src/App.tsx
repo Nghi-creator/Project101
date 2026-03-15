@@ -4,29 +4,74 @@ import { io } from "socket.io-client";
 const socket = io("http://localhost:8080");
 
 function App() {
-  // Create a direct reference to the HTML5 Canvas
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const peerConnection = useRef<RTCPeerConnection | null>(null);
 
   useEffect(() => {
-    // --- THE ANTI-FLICKER CANVAS RENDERER ---
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
+    console.log("[React] 1. Initializing WebRTC...");
 
-    // We create a background image object to decode the Base64 invisibly
-    const img = new Image();
-    img.onload = () => {
-      // ONLY draw to the screen when the image is 100% successfully decoded
-      if (ctx && canvas) {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    peerConnection.current = pc;
+
+    pc.onconnectionstatechange = () =>
+      console.log("🫀 [WebRTC] Connection State:", pc.connectionState);
+    pc.oniceconnectionstatechange = () =>
+      console.log("🧊 [WebRTC] ICE (Network) State:", pc.iceConnectionState);
+    pc.onsignalingstatechange = () =>
+      console.log("🚦 [WebRTC] Signaling State:", pc.signalingState);
+
+    // --- THE STREAM FIX ---
+    pc.ontrack = (event) => {
+      console.log(
+        "[React] 5. VIDEO TRACK RECEIVED! Plugging into <video> tag...",
+      );
+      if (videoRef.current) {
+        // If event.streams[0] is missing, we manually wrap the raw track in a MediaStream!
+        videoRef.current.srcObject =
+          event.streams[0] || new MediaStream([event.track]);
       }
     };
 
-    socket.on("video-frame", (base64Data: string) => {
-      // Giving the img a new src triggers the onload function above
-      img.src = `data:image/jpeg;base64,${base64Data}`;
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit("webrtc-ice-candidate", event.candidate);
+      }
+    };
+
+    socket.on("webrtc-answer", (answer) => {
+      console.log(
+        "[React] Answer received from Python! Finalizing connection...",
+      );
+      console.log("✉️ OPENING THE ENVELOPE (SDP):", answer.sdp);
+      pc.setRemoteDescription(new RTCSessionDescription(answer));
     });
 
-    // --- KEYBOARD CONTROLS ---
+    socket.on("webrtc-ice-candidate-backend", (candidate) => {
+      pc.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+
+    // --- THE RACE CONDITION FIX ---
+    // We only ask for video AFTER Socket.io confirms the connection is live
+    socket.on("connect", () => {
+      console.log("[React] 2. Socket.io Successfully Connected to Node.js!");
+
+      pc.addTransceiver("video", { direction: "recvonly" });
+
+      console.log("[React] 3. Generating WebRTC Offer...");
+      pc.createOffer()
+        .then((offer) => {
+          console.log("[React] 4. Offer generated! Firing at Node.js...");
+          pc.setLocalDescription(offer);
+          socket.emit("webrtc-offer", offer);
+        })
+        .catch((err) => {
+          console.error("[React] FATAL ERROR: Could not generate offer!", err);
+        });
+    });
+
+    // --- CONTROLS ---
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
       socket.emit("keydown", { key: e.key });
@@ -40,9 +85,12 @@ function App() {
     window.addEventListener("keyup", handleKeyUp);
 
     return () => {
-      socket.off("video-frame");
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      pc.close();
+      socket.off("connect");
+      socket.off("webrtc-answer");
+      socket.off("webrtc-ice-candidate-backend");
     };
   }, []);
 
@@ -56,13 +104,16 @@ function App() {
         paddingTop: "20px",
       }}
     >
-      <h1>🎮 React Cloud Console</h1>
+      <h1>🎮 WebRTC Cloud Console</h1>
 
-      <canvas
-        ref={canvasRef}
-        width={800}
-        height={600}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
         style={{
+          width: 800,
+          height: 600,
           background: "black",
           border: "4px solid #444",
           borderRadius: "8px",
