@@ -1,11 +1,11 @@
 import { Play, Plus } from "lucide-react";
 import { useState, useEffect } from "react";
 
-// Define the shape of the data we expect from Supabase
 interface Game {
   id: string;
   title: string;
   cover_url: string;
+  backdrop_url?: string;
 }
 
 interface HeroBannerProps {
@@ -24,7 +24,6 @@ export default function HeroBanner({ featuredGames }: HeroBannerProps) {
     return () => clearInterval(interval);
   }, [featuredGames]);
 
-  // If Supabase hasn't loaded the games yet, show a dark loading block
   if (!featuredGames || featuredGames.length === 0) {
     return (
       <div className="w-full h-[500px] md:h-[600px] bg-[#0B0F19] animate-pulse"></div>
@@ -35,7 +34,7 @@ export default function HeroBanner({ featuredGames }: HeroBannerProps) {
 
   return (
     <div className="relative w-full h-[500px] md:h-[600px] transition-all duration-700 overflow-hidden">
-      {/* 1. We lightened the gradient from /90 to /60 so it doesn't crush the image */}
+      {/* Gradients */}
       <div className="absolute inset-0 bg-gradient-to-r from-[#0B0F19] via-[#0B0F19]/60 to-transparent z-10"></div>
       <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-transparent to-transparent z-10"></div>
 
@@ -43,9 +42,8 @@ export default function HeroBanner({ featuredGames }: HeroBannerProps) {
       {featuredGames.map((game, index) => (
         <img
           key={game.id}
-          /* 2. We bumped the active image opacity from opacity-50 to opacity-80 */
           className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${index === currentIndex ? "opacity-80" : "opacity-0"}`}
-          src={game.cover_url}
+          src={game.backdrop_url || game.cover_url}
           alt={game.title}
         />
       ))}
