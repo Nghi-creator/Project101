@@ -9,6 +9,7 @@ interface Game {
   title: string;
   cover_url: string;
   rom_filename: string;
+  backdrop_url?: string;
 }
 
 export default function Landing() {
@@ -17,7 +18,6 @@ export default function Landing() {
   const [featuredGames, setFeaturedGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch from Supabase as soon as the page loads
   useEffect(() => {
     fetchGames();
   }, []);
@@ -34,7 +34,6 @@ export default function Landing() {
       if (data) {
         setGames(data);
 
-        // Pick 3 random games for the rotating Hero Banner
         const shuffled = [...data].sort(() => 0.5 - Math.random());
         setFeaturedGames(shuffled.slice(0, 3));
       }
@@ -45,12 +44,10 @@ export default function Landing() {
     }
   };
 
-  // Filter games based on the search box
   const filteredGames = games.filter((game) =>
     game.title.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  // Show a loading spinner while waiting for Supabase
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[80vh]">
