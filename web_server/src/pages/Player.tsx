@@ -1,18 +1,30 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, ThumbsUp, ThumbsDown, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  ThumbsUp,
+  ThumbsDown,
+  Send,
+  Trash2,
+} from "lucide-react";
 import { useWebRTC } from "../lib/useWebRTC";
 import { supabase } from "../lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
 interface GameComment {
   id: string;
+  user_id: string;
   content: string;
   created_at: string;
   profiles: {
     username: string | null;
     avatar_url: string | null;
   } | null;
+  comment_likes: {
+    user_id: string;
+    is_like: boolean;
+  }[];
 }
 
 export default function Player() {
@@ -24,10 +36,10 @@ export default function Player() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [gameTitle, setGameTitle] = useState<string>("");
 
-  // Reaction State
+  // Reaction State (Game)
   const [likes, setLikes] = useState(0);
   const [dislikes, setDislikes] = useState(0);
-  const [userReaction, setUserReaction] = useState<boolean | null>(null); // true = like, false = dislike
+  const [userReaction, setUserReaction] = useState<boolean | null>(null);
   const [isReactionLoading, setIsReactionLoading] = useState(false);
 
   // Comments State
@@ -74,7 +86,7 @@ export default function Player() {
       window.removeEventListener("keydown", preventScroll, { capture: true });
   }, []);
 
-  // 3. Fetch Reactions (Likes/Dislikes)
+  // 3. Fetch Game Reactions
   const fetchReactions = useCallback(async () => {
     if (!id) return;
     const { data, error } = await supabase
@@ -114,8 +126,9 @@ export default function Player() {
         .from("comments")
         .select(
           `
-          id, content, created_at,
-          profiles ( username, avatar_url )
+          id, content, created_at, user_id,
+          profiles ( username, avatar_url ),
+          comment_likes ( user_id, is_like )
         `,
         )
         .eq("game_id", id)
@@ -132,6 +145,7 @@ export default function Player() {
       } else {
         setHasMoreComments(false);
       }
+
       const typedData = displayData as unknown as GameComment[];
 
       if (isInitial) {
@@ -147,7 +161,7 @@ export default function Player() {
     fetchComments(0, true);
   }, [fetchComments]);
 
-  // Handle Like/Dislike Button Clicks
+  // Handle Game Reaction
   const handleReaction = async (isLike: boolean) => {
     if (!currentUser) {
       alert("Please sign in to react to this game!");
@@ -181,16 +195,15 @@ export default function Player() {
     }
   };
 
+  // Fetch Game Details
   useEffect(() => {
     const fetchGameDetails = async () => {
       if (!id) return;
-
       const { data } = await supabase
         .from("games")
         .select("title")
         .eq("id", id)
         .single();
-
       if (data?.title) {
         setGameTitle(data.title);
       } else {
@@ -200,11 +213,10 @@ export default function Player() {
         setGameTitle(formattedTitle);
       }
     };
-
     fetchGameDetails();
   }, [id]);
 
-  // Handle Submitting a new comment
+  // Post Comment
   const handlePostComment = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!currentUser || !newComment.trim() || !id) return;
@@ -216,9 +228,7 @@ export default function Player() {
         game_id: id,
         content: newComment.trim(),
       });
-
       if (error) throw error;
-
       setNewComment("");
       setPage(0);
       await fetchComments(0, true);
@@ -230,11 +240,80 @@ export default function Player() {
     }
   };
 
+  // Delete Comment
+  const handleDeleteComment = async (commentId: string) => {
+    if (!window.confirm("Are you sure you want to delete this comment?"))
+      return;
+    try {
+      await supabase.from("comments").delete().eq("id", commentId);
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete comment.");
+    }
+  };
+
+  // React to Comment
+  const handleCommentReaction = async (commentId: string, isLike: boolean) => {
+    if (!currentUser) {
+      alert("Please sign in to react to comments!");
+      return;
+    }
+
+    try {
+      const targetComment = comments.find((c) => c.id === commentId);
+      if (!targetComment) return;
+
+      if (targetComment.user_id === currentUser.id) {
+        return;
+      }
+
+      const existingReaction = targetComment.comment_likes?.find(
+        (l) => l.user_id === currentUser.id,
+      );
+
+      if (existingReaction?.is_like === isLike) {
+        // Toggle off
+        await supabase
+          .from("comment_likes")
+          .delete()
+          .match({ user_id: currentUser.id, comment_id: commentId });
+      } else {
+        // Switch or new vote
+        if (existingReaction) {
+          await supabase
+            .from("comment_likes")
+            .delete()
+            .match({ user_id: currentUser.id, comment_id: commentId });
+        }
+        await supabase.from("comment_likes").insert({
+          user_id: currentUser.id,
+          comment_id: commentId,
+          is_like: isLike,
+        });
+      }
+
+      const { data } = await supabase
+        .from("comment_likes")
+        .select("user_id, is_like")
+        .eq("comment_id", commentId);
+
+      if (data) {
+        setComments((prev) =>
+          prev.map((c) =>
+            c.id === commentId ? { ...c, comment_likes: data } : c,
+          ),
+        );
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <div className="flex flex-col items-center pt-24 pb-24 px-4 min-h-screen">
       {/* Top Controls Bar */}
       <div className="w-full max-w-5xl flex flex-col mb-6">
-        {/* Row 1: Back Button */}
         <button
           onClick={() => navigate("/")}
           className="flex items-center gap-2 text-gray-400 hover:text-[#00f2fe] transition-colors w-fit mb-4"
@@ -242,7 +321,6 @@ export default function Player() {
           <ArrowLeft className="w-5 h-5" /> Back to Library
         </button>
 
-        {/* Row 2: Title and Status Pill */}
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-extrabold text-white tracking-tight">
             {gameTitle || "Loading Game..."}
@@ -279,9 +357,8 @@ export default function Player() {
         />
       </div>
 
-      {/* Under-Player Action Bar (Instructions + Likes) */}
+      {/* Under-Player Action Bar */}
       <div className="w-full max-w-5xl mt-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        {/* Left: Keyboard Instructions */}
         <div className="flex flex-wrap items-center gap-4 text-gray-400 text-sm">
           <p>Click video to focus.</p>
           <p className="border-l border-gray-700 pl-4">
@@ -302,7 +379,6 @@ export default function Player() {
           </p>
         </div>
 
-        {/* Right: Likes & Dislikes */}
         <div className="flex items-center gap-2 bg-[#111827] rounded-full border border-gray-800 p-1">
           <button
             onClick={() => handleReaction(true)}
@@ -313,9 +389,7 @@ export default function Player() {
             />
             <span className="font-bold text-sm">{likes}</span>
           </button>
-
           <div className="w-px h-6 bg-gray-700"></div>
-
           <button
             onClick={() => handleReaction(false)}
             className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${userReaction === false ? "bg-red-500/20 text-red-400" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
@@ -389,6 +463,18 @@ export default function Player() {
                 comment.profiles?.avatar_url ||
                 `https://ui-avatars.com/api/?name=${displayName}&background=00f2fe&color=000000&bold=true`;
 
+              let cLikes = 0;
+              let cDislikes = 0;
+              let cUserReaction = null;
+
+              comment.comment_likes?.forEach((reaction) => {
+                if (reaction.is_like) cLikes++;
+                else cDislikes++;
+                if (currentUser && reaction.user_id === currentUser.id) {
+                  cUserReaction = reaction.is_like;
+                }
+              });
+
               return (
                 <div key={comment.id} className="flex gap-4 group">
                   <img
@@ -396,21 +482,71 @@ export default function Player() {
                     alt="Avatar"
                     className="w-10 h-10 rounded-full object-cover border border-gray-800"
                   />
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-bold text-white text-sm">
-                        {displayName}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {new Date(comment.created_at).toLocaleDateString(
-                          undefined,
-                          { month: "short", day: "numeric", year: "numeric" },
-                        )}
-                      </span>
+                  <div className="flex-grow">
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-sm">
+                          {displayName}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {new Date(comment.created_at).toLocaleDateString(
+                            undefined,
+                            { month: "short", day: "numeric", year: "numeric" },
+                          )}
+                        </span>
+                      </div>
+
+                      {/* Delete Button (Only shows if they own the comment) */}
+                      {currentUser?.id === comment.user_id && (
+                        <button
+                          onClick={() => handleDeleteComment(comment.id)}
+                          className="text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                    <p className="text-gray-300 text-sm leading-relaxed">
+
+                    <p className="text-gray-300 text-sm leading-relaxed mb-3">
                       {comment.content}
                     </p>
+
+                    {/* Comment Reaction Buttons */}
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handleCommentReaction(comment.id, true)}
+                        disabled={currentUser?.id === comment.user_id}
+                        className={`flex items-center gap-1.5 text-xs font-medium transition-all ${
+                          currentUser?.id === comment.user_id
+                            ? "text-gray-600 opacity-50 cursor-not-allowed"
+                            : cUserReaction === true
+                              ? "text-[#00f2fe]"
+                              : "text-gray-500 hover:text-white"
+                        }`}
+                      >
+                        <ThumbsUp
+                          className={`w-3.5 h-3.5 ${cUserReaction === true ? "fill-current" : ""}`}
+                        />
+                        {cLikes > 0 && cLikes}
+                      </button>
+
+                      <button
+                        onClick={() => handleCommentReaction(comment.id, false)}
+                        disabled={currentUser?.id === comment.user_id}
+                        className={`flex items-center gap-1.5 text-xs font-medium transition-all ${
+                          currentUser?.id === comment.user_id
+                            ? "text-gray-600 opacity-50 cursor-not-allowed"
+                            : cUserReaction === false
+                              ? "text-red-400"
+                              : "text-gray-500 hover:text-white"
+                        }`}
+                      >
+                        <ThumbsDown
+                          className={`w-3.5 h-3.5 ${cUserReaction === false ? "fill-current" : ""}`}
+                        />
+                        {cDislikes > 0 && cDislikes}
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
