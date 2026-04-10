@@ -11,8 +11,8 @@ import {
   AlertTriangle,
   X,
 } from "lucide-react";
-import { useWebRTC } from "../lib/useWebRTC";
-import { supabase } from "../lib/supabaseClient";
+import { useWebRTC } from "../../lib/useWebRTC";
+import { supabase } from "../../lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
 interface GameComment {

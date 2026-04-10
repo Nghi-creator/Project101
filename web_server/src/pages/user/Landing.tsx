@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Search } from "lucide-react";
-import { supabase } from "../lib/supabaseClient";
-import HeroBanner from "../components/shared/HeroBanner";
-import GameCard from "../components/shared/GameCard";
+import { supabase } from "../../lib/supabaseClient";
+import HeroBanner from "../../components/user/HeroBanner";
+import GameCard from "../../components/user/GameCard";
 
 interface Game {
   id: string;

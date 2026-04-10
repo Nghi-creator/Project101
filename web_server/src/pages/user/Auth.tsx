@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Mail, Lock, Gamepad2, Loader2, ArrowLeft } from "lucide-react";
 import { FaGithub, FaGoogle } from "react-icons/fa";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
 export default function Auth() {
   const navigate = useNavigate();
