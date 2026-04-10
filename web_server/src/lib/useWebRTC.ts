@@ -67,7 +67,6 @@ export function useWebRTC(gameId: string) {
       }
     });
 
-    // 2. NEW LISTENER
     socket.on("python-ready", async () => {
       console.log("[WebRTC] Python is awake! Generating and sending Offer...");
 
