@@ -8,13 +8,13 @@ import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
 import AdminLayout from "./components/layout/AdminLayout";
 
-// Page Imports
-import Landing from "./pages/Landing";
-import Player from "./pages/Player";
-import Auth from "./pages/Auth";
-import Favorites from "./pages/Favorites";
-import Profile from "./pages/Profile";
-import ResetPassword from "./pages/ResetPassword";
+import Landing from "./pages/user/Landing";
+import Player from "./pages/user/Player";
+import Auth from "./pages/user/Auth";
+import Favorites from "./pages/user/Favorites";
+import Profile from "./pages/user/Profile";
+import ResetPassword from "./pages/user/ResetPassword";
+
 import UserManagement from "./pages/admin/UserManagement";
 import Dashboard from "./pages/admin/Dashboard";
 
