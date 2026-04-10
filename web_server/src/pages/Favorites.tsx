@@ -88,9 +88,6 @@ export default function Favorites() {
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 text-white flex items-center gap-4">
             My Library
           </h1>
-          <p className="text-lg text-gray-400">
-            Your personal collection of saved classics.
-          </p>
         </div>
 
         {/* Empty State vs Grid */}
