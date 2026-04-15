@@ -1,12 +1,72 @@
 const express = require("express");
 const http = require("http");
+const https = require("https"); // <-- NEW IMPORT
 const { Server } = require("socket.io");
 const { spawn, exec } = require("child_process");
 const fs = require("fs");
+const path = require("path");
+const cors = require("cors");
+const multer = require("multer");
 
 const app = express();
-const server = http.createServer(app);
+app.use(cors());
 
+// --- LOCAL LIBRARY API ---
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "/roms");
+  },
+  filename: function (req, file, cb) {
+    cb(null, file.originalname);
+  },
+});
+const upload = multer({ storage: storage });
+
+app.get("/local-games", (req, res) => {
+  try {
+    const files = fs
+      .readdirSync("/roms")
+      .filter((file) => file.toLowerCase().endsWith(".nes"))
+      .map((file) => ({
+        name: file,
+        time: fs.statSync(`/roms/${file}`).mtime.getTime(),
+      }))
+      .sort((a, b) => b.time - a.time)
+      .map((f) => f.name);
+
+    res.json(files);
+  } catch (err) {
+    console.error("Failed to read /roms directory:", err);
+    res.json([]);
+  }
+});
+
+app.post("/upload", upload.single("romFile"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  console.log(`[Library] New local game added: ${req.file.originalname}`);
+  res.json({ success: true, filename: req.file.originalname });
+});
+
+app.delete("/local-games/:filename", (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const decodedName = decodeURIComponent(filename);
+    const filePath = `/roms/${decodedName}`;
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`[Library] Deleted local game: ${decodedName}`);
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: "File not found" });
+    }
+  } catch (err) {
+    console.error("Failed to delete file:", err);
+    res.status(500).json({ error: "Failed to delete file" });
+  }
+});
+
+const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
@@ -14,7 +74,6 @@ const io = new Server(server, {
 let retroarchProcess = null;
 let cameraProcess = null;
 
-// 1. Boot the Xvfb and Audio once when the server starts
 function startVirtualDisplay() {
   console.log("Booting Virtual Display (Xvfb) and PulseAudio...");
 
@@ -36,12 +95,12 @@ function startVirtualDisplay() {
   );
 }
 
-// 2. Boot the actual Game and Camera dynamically
-function bootGame(romFilename) {
+// 2. Boot the Game
+function bootGame(absoluteRomPath) {
   if (retroarchProcess) retroarchProcess.kill();
   if (cameraProcess) cameraProcess.kill();
 
-  console.log(`[Engine] Mounting ROM: ${romFilename}`);
+  console.log(`[Engine] Mounting ROM: ${absoluteRomPath}`);
 
   retroarchProcess = spawn(
     "retroarch",
@@ -51,7 +110,7 @@ function bootGame(romFilename) {
       "/cores/mesen_libretro.so",
       "--appendconfig",
       "/app/retroarch.cfg",
-      `/roms/${romFilename}`,
+      absoluteRomPath,
     ],
     { env: { ...process.env, DISPLAY: ":99", PULSE_SERVER: "127.0.0.1" } },
   );
@@ -73,10 +132,44 @@ function bootGame(romFilename) {
 io.on("connection", (socket) => {
   console.log(`[Node.js] Client connected! ID: ${socket.id}`);
 
-  socket.on("start-game", (payload) => {
-    const romFile = payload.romFilename;
-    console.log(`\n[Node.js] React requested game boot: ${romFile}`);
-    bootGame(romFile);
+  socket.on("start-game", async (payload) => {
+    const romFileOrUrl = payload.romFilename;
+    console.log(`\n[Node.js] React requested game boot: ${romFileOrUrl}`);
+
+    // --- THE CLOUD BOOTLOADER ---
+    if (romFileOrUrl.startsWith("http")) {
+      const tmpPath = "/tmp/cloud_game.nes";
+      console.log(
+        "[Engine] Cloud URL detected. Downloading ROM to temporary storage...",
+      );
+
+      const file = fs.createWriteStream(tmpPath);
+      https
+        .get(romFileOrUrl, (response) => {
+          if (response.statusCode !== 200) {
+            console.error(
+              `[Engine] Failed to download: Status Code ${response.statusCode}`,
+            );
+            return;
+          }
+          response.pipe(file);
+          file.on("finish", () => {
+            file.close();
+            console.log("[Engine] Download complete. Booting Cloud Game.");
+            bootGame(tmpPath);
+          });
+        })
+        .on("error", (err) => {
+          fs.unlink(tmpPath, () => {});
+          console.error(
+            "[Engine] CRITICAL: Failed to download cloud ROM:",
+            err,
+          );
+        });
+    } else {
+      // Local Vault File
+      bootGame(`/roms/${romFileOrUrl}`);
+    }
   });
 
   socket.on("python-ready", () => {

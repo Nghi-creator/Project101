@@ -1,0 +1,193 @@
+<!doctype html>
+<html>
+  <head>
+    <title>PIXELATED Console</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              synth: {
+                bg: "#0b0f19",
+                surface: "#111827",
+                primary: "#ff4d8f",
+                "primary-hover": "#ff3377",
+                secondary: "#ff9f43",
+                border: "#1f2937",
+                ink: "#050505",
+              },
+            },
+            boxShadow: {
+              "glow-primary": "0 0 20px rgba(255,77,143,0.4)",
+              "glow-primary-sm": "0 0 10px rgba(255,77,143,0.3)",
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #111827;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #1f2937;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #ff4d8f;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-synth-bg text-gray-300 font-sans min-h-screen flex items-center justify-center p-6 relative overflow-hidden"
+  >
+    <div
+      class="absolute inset-0 bg-gradient-to-br from-synth-bg via-synth-bg/90 to-synth-primary/10 -z-10"
+    ></div>
+
+    <div
+      class="bg-synth-surface border border-synth-border rounded-xl shadow-2xl p-8 w-full max-w-lg relative group transition-all"
+    >
+      <div
+        class="status-badge inline-block px-3 py-1 rounded-full bg-synth-primary/20 text-synth-primary text-xs font-bold uppercase tracking-wide border border-synth-primary/50 mb-6 shadow-glow-primary-sm"
+      >
+        <span
+          class="inline-block w-2 h-2 rounded-full bg-synth-primary mr-1 animate-pulse"
+        ></span>
+        Engine Offline
+      </div>
+
+      <h1
+        class="text-4xl font-extrabold tracking-tight mb-2 text-white [text-shadow:0_0_30px_rgba(255,77,143,0.3),0_2px_10px_rgba(0,0,0,0.8)]"
+      >
+        PIXELATED <span class="text-synth-primary">Core</span>
+      </h1>
+      <p class="text-gray-400 mb-8 border-l-4 border-synth-secondary pl-3">
+        Local orchestration gateway. Manage ROMs via the web interface.
+      </p>
+
+      <div class="flex flex-col gap-4">
+        <button
+          id="power-btn"
+          class="w-full bg-synth-primary hover:bg-synth-primary-hover text-synth-ink font-bold py-3 px-8 rounded-lg shadow-glow-primary transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+        >
+          <svg
+            id="power-icon"
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="stroke-synth-ink"
+          >
+            <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+            <line x1="12" y1="2" x2="12" y2="12" />
+          </svg>
+          <span id="power-text">Initialize Engine</span>
+        </button>
+      </div>
+
+      <div
+        class="mt-8 rounded-lg border border-synth-border bg-[#050810] shadow-inner overflow-hidden"
+      >
+        <div class="bg-synth-border/50 px-3 py-1.5 flex items-center gap-2">
+          <div class="w-2.5 h-2.5 rounded-full bg-red-500/80"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-green-500/80"></div>
+          <span
+            class="text-[10px] text-gray-400 ml-2 font-mono uppercase tracking-widest"
+            >System Logs</span
+          >
+        </div>
+        <div
+          id="log"
+          class="p-3 h-40 overflow-y-auto font-mono text-[11px] leading-relaxed text-synth-secondary whitespace-pre-wrap"
+        ></div>
+      </div>
+    </div>
+
+    <script>
+      const { ipcRenderer } = require("electron");
+
+      const powerBtn = document.getElementById("power-btn");
+      const powerText = document.getElementById("power-text");
+      const logBox = document.getElementById("log");
+      const statusBadge = document.querySelector(".status-badge");
+
+      let isRunning = false;
+
+      function setStatus(active) {
+        if (active) {
+          statusBadge.innerHTML =
+            '<span class="inline-block w-2 h-2 rounded-full bg-synth-primary mr-1 animate-pulse shadow-glow-primary"></span> Engine Active';
+          statusBadge.classList.replace(
+            "bg-synth-primary/20",
+            "bg-synth-primary/30",
+          );
+
+          powerBtn.classList.replace("bg-synth-primary", "bg-red-500");
+          powerBtn.classList.replace(
+            "hover:bg-synth-primary-hover",
+            "hover:bg-red-600",
+          );
+          powerBtn.classList.remove("shadow-glow-primary");
+          powerText.innerText = "Shutdown Engine";
+          isRunning = true;
+        } else {
+          statusBadge.innerHTML =
+            '<span class="inline-block w-2 h-2 rounded-full bg-synth-primary mr-1 animate-pulse"></span> Engine Offline';
+          statusBadge.classList.replace(
+            "bg-synth-primary/30",
+            "bg-synth-primary/20",
+          );
+
+          powerBtn.classList.replace("bg-red-500", "bg-synth-primary");
+          powerBtn.classList.replace(
+            "hover:bg-red-600",
+            "hover:bg-synth-primary-hover",
+          );
+          powerBtn.classList.add("shadow-glow-primary");
+          powerText.innerText = "Initialize Engine";
+          isRunning = false;
+        }
+      }
+
+      function appendLog(message) {
+        logBox.innerHTML += message + "<br>";
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+
+      powerBtn.addEventListener("click", () => {
+        if (!isRunning) {
+          appendLog(
+            `<span class="text-gray-400">>></span> Initializing startup sequence...`,
+          );
+          setStatus(true);
+          ipcRenderer.send("start-docker");
+        } else {
+          powerBtn.disabled = true;
+          powerText.innerText = "Shutting down...";
+          ipcRenderer.send("stop-docker");
+        }
+      });
+
+      ipcRenderer.on("server-log", (event, message) => {
+        appendLog(`<span class="text-synth-primary">SYS</span> ${message}`);
+      });
+
+      ipcRenderer.on("engine-stopped", () => {
+        setStatus(false);
+        powerBtn.disabled = false;
+      });
+    </script>
+  </body>
+</html>
