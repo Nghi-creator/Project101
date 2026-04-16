@@ -7,12 +7,14 @@ const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
 const multer = require("multer");
+const crypto = require("crypto");
 
 const app = express();
 app.use(cors());
 
 const getUserFolder = (userId) => {
-  const safeId = userId || "anonymous";
+  // Only allow alphanumeric, dashes, and underscores to prevent path traversal
+  const safeId = (userId && /^[a-zA-Z0-9_-]+$/.test(userId)) ? userId : "anonymous";
   const folderPath = path.join("/roms", safeId);
   if (!fs.existsSync(folderPath)) {
     fs.mkdirSync(folderPath, { recursive: true });
@@ -26,7 +28,8 @@ const storage = multer.diskStorage({
     cb(null, getUserFolder(userId));
   },
   filename: function (req, file, cb) {
-    cb(null, file.originalname);
+    const safeFilename = path.basename(file.originalname || "unknown.nes");
+    cb(null, safeFilename);
   },
 });
 const upload = multer({ storage: storage });
@@ -67,11 +70,12 @@ app.delete("/local-games/:filename", (req, res) => {
     const userFolder = getUserFolder(userId);
     const filename = req.params.filename;
     const decodedName = decodeURIComponent(filename);
-    const filePath = path.join(userFolder, decodedName);
+    const safeName = path.basename(decodedName);
+    const filePath = path.join(userFolder, safeName);
 
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
-      console.log(`[Library] Deleted local game: ${decodedName}`);
+      console.log(`[Library] Deleted local game: ${safeName}`);
       res.json({ success: true });
     } else {
       res.status(404).json({ error: "File not found" });
@@ -148,11 +152,12 @@ io.on("connection", (socket) => {
 
   socket.on("start-game", async (payload) => {
     const romFileOrUrl = payload.romFilename;
-    const userId = payload.userId || "anonymous";
+    const rawUserId = payload.userId || "anonymous";
+    const safeUserId = (/^[a-zA-Z0-9_-]+$/.test(rawUserId)) ? rawUserId : "anonymous";
     console.log(`\n[Node.js] React requested game boot: ${romFileOrUrl}`);
 
     if (romFileOrUrl.startsWith("http")) {
-      const tmpPath = "/tmp/cloud_game.nes";
+      const tmpPath = `/tmp/cloud_game_${crypto.randomUUID()}.nes`;
       console.log(
         "[Engine] Cloud URL detected. Downloading ROM to temporary storage...",
       );
@@ -182,7 +187,8 @@ io.on("connection", (socket) => {
         });
     } else {
       // Boot Local Vault File from User's Personal Folder
-      bootGame(path.join("/roms", userId, romFileOrUrl));
+      const safeRomFile = path.basename(romFileOrUrl);
+      bootGame(path.join("/roms", safeUserId, safeRomFile));
     }
   });
 

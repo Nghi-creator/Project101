@@ -9,7 +9,11 @@ function createWindow() {
     width: 600,
     height: 480,
     backgroundColor: "#0B0F19",
-    webPreferences: { nodeIntegration: true, contextIsolation: false },
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
+    },
   });
   mainWindow.loadFile("index.html");
 }
