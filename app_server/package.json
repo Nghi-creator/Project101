@@ -32,14 +32,8 @@
       "target": "AppImage"
     },
     "extraResources": [
-      {
-        "from": "Dockerfile",
-        "to": "Dockerfile"
-      },
-      {
-        "from": "app_server",
-        "to": "app_server"
-      }
+      "Dockerfile",
+      "**/*"
     ]
   }
 }

@@ -56,8 +56,8 @@ WORKDIR /app
 RUN npm install express socket.io cors
 RUN mkdir -p /roms
 
-COPY app_server/package*.json ./
+COPY package*.json ./
 RUN npm install
-COPY app_server/ .
+COPY . .
 
 CMD ["node", "server.js"]

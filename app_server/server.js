@@ -13,8 +13,8 @@ const app = express();
 app.use(cors());
 
 const getUserFolder = (userId) => {
-  // Only allow alphanumeric, dashes, and underscores to prevent path traversal
-  const safeId = (userId && /^[a-zA-Z0-9_-]+$/.test(userId)) ? userId : "anonymous";
+  const safeId =
+    userId && /^[a-zA-Z0-9_-]+$/.test(userId) ? userId : "anonymous";
   const folderPath = path.join("/roms", safeId);
   if (!fs.existsSync(folderPath)) {
     fs.mkdirSync(folderPath, { recursive: true });
@@ -153,7 +153,9 @@ io.on("connection", (socket) => {
   socket.on("start-game", async (payload) => {
     const romFileOrUrl = payload.romFilename;
     const rawUserId = payload.userId || "anonymous";
-    const safeUserId = (/^[a-zA-Z0-9_-]+$/.test(rawUserId)) ? rawUserId : "anonymous";
+    const safeUserId = /^[a-zA-Z0-9_-]+$/.test(rawUserId)
+      ? rawUserId
+      : "anonymous";
     console.log(`\n[Node.js] React requested game boot: ${romFileOrUrl}`);
 
     if (romFileOrUrl.startsWith("http")) {
