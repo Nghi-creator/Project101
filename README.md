@@ -73,9 +73,11 @@ These are the features offered to both the Studio and User versions.
 
 Game player: You will be able to play available games on the web and games from rom files that you upload to local vault. However the key difference is that the Studio version utilizes **_WebRTC Streaming_**, an intricate yet powerful game streaming tool. This ensuring a 1:1 testing environment for network latency.
 
+Game library: You can also add one of your favorite games from our game database to your favorite-game library.
+
 Social Hub: All social features that apply to the User edition applies to this version. That means, as a developer, you can leave feedback on other developers' projects via the commenting system, use the Like/Dislike ratio to gauge player reception, and engage in meaningful conversations within the community.
 
-The Local Vault: Need to test a build before showing the world? The Local Vault allows you to drag-and-drop ROMs directly from your hard drive into the web player, meaning one great purpose of the local vault is to allow you, a developer to upload your own games and playtest it before you are ready to publish it to any other platform (not just PIXELATED).
+Local Vault: Need to test a build before showing the world? The Local Vault allows you to drag-and-drop ROMs directly from your hard drive into the web player, meaning one great purpose of the local vault is to allow you, a developer to upload your own games and playtest it before you are ready to publish it to any other platform (not just PIXELATED).
 
 ### 🚀 Studio's exclusive feature
 
