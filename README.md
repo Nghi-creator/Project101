@@ -114,7 +114,7 @@ That being said, this project serves a greater purpose than just being an a 8-bi
 ## Community
 
 - **Link to the User edition:** [PIXELATED User edtion](https://github.com/Nghi-creator/Pixelated-User-Edition)
-- **Dev post:** [Dev.to Nicholas](https://dev.to/dashboard)
+- **Dev post:** [Dev.to Nicholas](https://dev.to/nicholasthegreat)
 - **LinkedIn:** [Linkedin Nicholas](https://www.linkedin.com/in/nicholas-nguyen-3bb17a335/)
 - **Email:** [Mail Nicholas](mailto:gianghi30032005@gmail.com)
 
